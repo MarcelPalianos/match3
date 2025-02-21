@@ -1,22 +1,12 @@
 package com.myapplication.andreea
 
 
-import android.os.Build
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import kotlin.random.Random
 
-
 class Match3Game(private val gridSize: Int = 6) {
-
-    private val colors = listOf(
-        Color.Red, Color.Green, Color.Blue, Color.Yellow, Color.Magenta, Color.Cyan
-    )
-
+    private val colors = listOf(Color.Red, Color.Green, Color.Blue, Color.Yellow, Color.Magenta, Color.Cyan, Color.Gray, Color.White)
     private var nextId = 0
     private var grid = mutableListOf<GridItem>()
 
@@ -33,10 +23,6 @@ class Match3Game(private val gridSize: Int = 6) {
         }
     }
 
-    fun onCellClicked(index: Int) {
-        // Handle cell clicks (if needed for future features)
-    }
-
     fun onSwipe(index: Int, direction: SwipeDirection, onGridUpdated: () -> Unit) {
         val targetIndex = getTargetIndex(index, direction)
         if (targetIndex != -1) {
@@ -45,26 +31,13 @@ class Match3Game(private val gridSize: Int = 6) {
     }
 
     private fun getTargetIndex(index: Int, direction: SwipeDirection): Int {
-        val row = index / gridSize
-        val col = index % gridSize
-
-        val targetRow = when (direction) {
-            SwipeDirection.UP -> row - 1
-            SwipeDirection.DOWN -> row + 1
-            else -> row
+        return when (direction) {
+            SwipeDirection.LEFT -> if (index % gridSize > 0) index - 1 else -1
+            SwipeDirection.RIGHT -> if (index % gridSize < gridSize - 1) index + 1 else -1
+            SwipeDirection.UP -> if (index >= gridSize) index - gridSize else -1
+            SwipeDirection.DOWN -> if (index < gridSize * (gridSize - 1)) index + gridSize else -1
+            SwipeDirection.NONE -> -1
         }
-
-        val targetCol = when (direction) {
-            SwipeDirection.LEFT -> col - 1
-            SwipeDirection.RIGHT -> col + 1
-            else -> col
-        }
-
-        if (targetRow < 0 || targetRow >= gridSize || targetCol < 0 || targetCol >= gridSize) {
-            return -1
-        }
-
-        return targetRow * gridSize + targetCol
     }
 
     private fun swapTiles(index1: Int, index2: Int, onGridUpdated: () -> Unit) {
@@ -73,11 +46,15 @@ class Match3Game(private val gridSize: Int = 6) {
         grid[index2] = temp
 
         CoroutineScope(Dispatchers.Default).launch {
-            val matches = findAllMatches()
+            val matches = MatchFinder.findAllMatches(grid, gridSize)
             if (matches.isEmpty()) {
-                // No matches, swap back
                 delay(100)
-                swapTiles(index1, index2, onGridUpdated)
+                withContext(Dispatchers.Main) {
+                    val tempSwap = grid[index1]
+                    grid[index1] = grid[index2]
+                    grid[index2] = tempSwap
+                    onGridUpdated()
+                }
             } else {
                 processMatches(matches, onGridUpdated)
             }
@@ -88,77 +65,59 @@ class Match3Game(private val gridSize: Int = 6) {
         var currentMatches = matches
         while (currentMatches.isNotEmpty()) {
             removeMatches(currentMatches)
-            applyGravity()
-            withContext(Dispatchers.Main) {
-                onGridUpdated()
-            }
+            applyGravity(onGridUpdated)
+            withContext(Dispatchers.Main) { onGridUpdated() }
             delay(200)
-            currentMatches = findAllMatches()
+            currentMatches = MatchFinder.findAllMatches(grid, gridSize)
         }
     }
 
     private fun removeMatches(matches: Set<Int>) {
-        val sortedMatches = matches.sortedDescending()
-        for (index in sortedMatches) {
-            grid.removeAt(index)
-            grid.add(index, GridItem(nextId++, getRandomColor()))
+        matches.forEach { index ->
+            grid[index] = GridItem(nextId++, Color.Transparent)
         }
     }
 
-    private fun applyGravity() {
-        val newGrid = MutableList(gridSize * gridSize) { GridItem(-1, Color.Transparent) }
+    private fun applyGravity(onGridUpdated: () -> Unit) {
         for (col in 0 until gridSize) {
             val columnItems = mutableListOf<GridItem>()
             for (row in 0 until gridSize) {
                 val index = row * gridSize + col
-                if (index < grid.size) {
+                if (grid[index].color != Color.Transparent) {
                     columnItems.add(grid[index])
                 }
             }
-            for (row in gridSize - 1 downTo 0) {
-                val index = row * gridSize + col
-                if (columnItems.isNotEmpty()) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        newGrid[index] = columnItems.removeLast()
-                    }
-                }
+
+            while (columnItems.size < gridSize) {
+                columnItems.add(0, GridItem(nextId++, getRandomColor()))
             }
-        }
-        grid.clear()
-        grid.addAll(newGrid)
-    }
 
-    private fun findAllMatches(): Set<Int> {
-        val matches = mutableSetOf<Int>()
-
-        // Check horizontal matches
-        for (row in 0 until gridSize) {
-            for (col in 0 until gridSize - 2) {
-                val index1 = row * gridSize + col
-                val index2 = index1 + 1
-                val index3 = index2 + 1
-                if (grid[index1].color == grid[index2].color && grid[index2].color == grid[index3].color) {
-                    matches.addAll(listOf(index1, index2, index3))
-                }
+            for (row in 0 until gridSize) {
+                grid[row * gridSize + col] = columnItems[row]
             }
         }
 
-        // Check vertical matches
-        for (col in 0 until gridSize) {
-            for (row in 0 until gridSize - 2) {
-                val index1 = row * gridSize + col
-                val index2 = index1 + gridSize
-                val index3 = index2 + gridSize
-                if (grid[index1].color == grid[index2].color && grid[index2].color == grid[index3].color) {
-                    matches.addAll(listOf(index1, index2, index3))
-                }
-            }
+        // 🔥 After gravity applies, check for moves immediately
+        if (!MatchFinder.findPotentialMatches(grid, gridSize)) {
+            handleNoMoreMoves(onGridUpdated)
+        } else {
+            onGridUpdated() // If moves exist, update the UI
         }
+    }
+    private fun reshuffleGrid(onGridUpdated: () -> Unit) {
+        do {
+            grid.shuffle() // Randomly shuffle tiles
+        } while (!MatchFinder.findPotentialMatches(grid, gridSize)) // Ensure a valid move exists
 
-        return matches
+        println("Grid reshuffled!")
+        onGridUpdated() // Notify UI to re-render
+    }
+    private fun handleNoMoreMoves(onGridUpdated: () -> Unit) {
+        println("No more moves! Reshuffling grid...")
+        reshuffleGrid(onGridUpdated) // Reshuffle instead of resetting
     }
 
-    private fun getRandomColor(): Color {
-        return colors[Random.nextInt(colors.size)]
-    }
+
+
+    private fun getRandomColor(): Color = colors[Random.nextInt(colors.size)]
 }

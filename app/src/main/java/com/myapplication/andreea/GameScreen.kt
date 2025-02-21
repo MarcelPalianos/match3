@@ -38,7 +38,6 @@ fun GameScreen(viewModel: GameViewModel) {
         }
     }
 }
-
 @Composable
 fun GridItem(
     item: GridItem,
@@ -54,16 +53,20 @@ fun GridItem(
                 detectDragGestures(
                     onDrag = { change, dragAmount ->
                         change.consume()
+
                         if (!lockDirection) {
                             val swipeDirection = calculateSwipeDirection(dragAmount.x, dragAmount.y)
+
                             if (swipeDirection != SwipeDirection.NONE) {
-                                lockDirection = true
+                                lockDirection = true  // Lock direction after detecting a swipe
                                 onSwipe(index, swipeDirection)
+                                android.util.Log.d("DEBUG", "Swipe detected: $swipeDirection at index: $index")
                             }
                         }
                     },
                     onDragEnd = {
                         lockDirection = false
+                        android.util.Log.d("DEBUG", "Swipe ended at index: $index")
                     }
                 )
             },
@@ -74,7 +77,7 @@ fun GridItem(
 }
 
 fun calculateSwipeDirection(dragAmountX: Float, dragAmountY: Float): SwipeDirection {
-    val threshold = 30
+    val threshold = 10f // Lowered threshold for better touch detection
     return when {
         abs(dragAmountX) > abs(dragAmountY) -> {
             if (dragAmountX > threshold) {

@@ -13,10 +13,6 @@ class GameViewModel : ViewModel() {
         _gridItems.addAll(game.getGrid())
     }
 
-    fun onCellClicked(index: Int) {
-        game.onCellClicked(index)
-    }
-
     fun onSwipe(index: Int, direction: SwipeDirection) {
         game.onSwipe(index, direction) {
             _gridItems.clear()
