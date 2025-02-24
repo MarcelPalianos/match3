@@ -2,7 +2,7 @@ package com.myapplication.andreea
 
 class MatchFinder {
     companion object {
-        fun findAllMatches(grid: List<GridItem>, gridSize: Int): Set<Int> {
+        private fun findAllMatches(grid: List<GridItem>, gridSize: Int): Set<Int> {
             val matches = mutableSetOf<Int>()
             for (row in 0 until gridSize) {
                 for (col in 0 until gridSize - 2) {

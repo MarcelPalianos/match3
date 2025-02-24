@@ -1,101 +1,116 @@
 package com.myapplication.andreea
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
-@Composable
-fun GameScreen(viewModel: GameViewModel) {
-    val gridItems = viewModel.gridItems
-
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(6),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.padding(8.dp)
-    ) {
-        itemsIndexed(gridItems) { index, item ->
-            GridItem(item, index, viewModel::onSwipe)
-        }
-    }
-}
 @Composable
 fun GridItem(
     item: GridItem,
     index: Int,
     onSwipe: (Int, SwipeDirection) -> Unit
 ) {
-    var lockDirection by remember { mutableStateOf(false) }
+    // State variables for animation and drag
+    val animatedOffsetX = remember { Animatable(0f) }
+    val animatedOffsetY = remember { Animatable(0f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(key1 = item.x, key2 = item.y) {
+        coroutineScope.launch {
+            animatedOffsetX.animateTo(
+                targetValue = item.x * 64f,
+                animationSpec = tween(durationMillis = 500)
+            )
+        }
+        coroutineScope.launch {
+            animatedOffsetY.animateTo(
+                targetValue = item.y * 64f,
+                animationSpec = tween(durationMillis = 500)
+            )
+        }
+    }
+
     Box(
         modifier = Modifier
+            .offset {
+                IntOffset(
+                    (animatedOffsetX.value + offsetX).roundToInt(),
+                    (animatedOffsetY.value + offsetY).roundToInt()
+                )
+            }
             .size(60.dp)
             .background(item.color, shape = MaterialTheme.shapes.medium)
             .pointerInput(Unit) {
                 detectDragGestures(
+                    onDragStart = {
+                        isDragging = true
+                    },
                     onDrag = { change, dragAmount ->
                         change.consume()
-
-                        if (!lockDirection) {
-                            val swipeDirection = calculateSwipeDirection(dragAmount.x, dragAmount.y)
-
-                            if (swipeDirection != SwipeDirection.NONE) {
-                                lockDirection = true  // Lock direction after detecting a swipe
-                                onSwipe(index, swipeDirection)
-                                android.util.Log.d("DEBUG", "Swipe detected: $swipeDirection at index: $index")
-                            }
-                        }
+                        offsetX += dragAmount.x
+                        offsetY += dragAmount.y
                     },
                     onDragEnd = {
-                        lockDirection = false
-                        android.util.Log.d("DEBUG", "Swipe ended at index: $index")
+                        isDragging = false
+                        val swipeDirection = calculateSwipeDirection(offsetX, offsetY)
+                        if (swipeDirection != SwipeDirection.NONE) {
+                            onSwipe(index, swipeDirection)
+                        }
+                        offsetX = 0f
+                        offsetY = 0f
                     }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
-        // You can add content here if needed, like an icon or text
+        // ... (Your content for the GridItem)
     }
 }
 
 fun calculateSwipeDirection(dragAmountX: Float, dragAmountY: Float): SwipeDirection {
-    val threshold = 10f // Lowered threshold for better touch detection
+    val threshold = 10f
+    val absX = abs(dragAmountX)
+    val absY = abs(dragAmountY)
+
     return when {
-        abs(dragAmountX) > abs(dragAmountY) -> {
-            if (dragAmountX > threshold) {
-                SwipeDirection.RIGHT
-            } else if (dragAmountX < -threshold) {
-                SwipeDirection.LEFT
-            } else {
-                SwipeDirection.NONE
+        absX > absY -> {
+            when {
+                dragAmountX > threshold -> SwipeDirection.RIGHT
+                dragAmountX < -threshold -> SwipeDirection.LEFT
+                else -> SwipeDirection.NONE
             }
         }
 
-        abs(dragAmountY) > abs(dragAmountX) -> {
-            if (dragAmountY > threshold) {
-                SwipeDirection.DOWN
-            } else if (dragAmountY < -threshold) {
-                SwipeDirection.UP
-            } else {
-                SwipeDirection.NONE
+        absY > absX -> {
+            when {
+                dragAmountY > threshold -> SwipeDirection.DOWN
+                dragAmountY < -threshold -> SwipeDirection.UP
+                else -> SwipeDirection.NONE
             }
         }
 
